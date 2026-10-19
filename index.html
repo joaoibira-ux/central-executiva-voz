@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Voz" />
+  <meta name="theme-color" content="#040b1c" />
+  <title>Voz - Central Executiva</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icone-voz.svg" />
+  <link rel="apple-touch-icon" href="./icone-voz.png" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #040b1c; height: 100%; }
+    body {
+      font-family: "Segoe UI", system-ui, Arial, sans-serif; color: #e8f2ff;
+      background: radial-gradient(ellipse at 50% 40%, #0b2a5e 0%, #040b1c 70%) fixed;
+      min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+      padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+    }
+    .caixa { width: 100%; max-width: 420px; }
+    h1 { font-size: 1.3rem; letter-spacing: .05em; margin-bottom: 18px; text-align: center; }
+    label { display: block; margin: 14px 0 5px; font-size: .8rem; color: #8ea9cc; }
+    input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #1d4a8a; background: #0a1a3a; color: #e8f2ff; font: inherit; }
+    .btn { width: 100%; margin-top: 18px; border: 0; border-radius: 10px; padding: 13px; font: inherit; font-weight: 600; cursor: pointer; background: #3ab4ff; color: #021227; }
+    .btn.sec { background: transparent; color: #e8f2ff; border: 1px solid #1d4a8a; margin-top: 10px; }
+    .aviso { font-size: .85rem; color: #8ea9cc; line-height: 1.5; text-align: center; }
+    .ok { text-align: center; }
+    .ok .marca { font-size: 2.2rem; margin-bottom: 8px; }
+    .link { display: block; text-align: center; margin-top: 14px; color: #3ab4ff; text-decoration: none; font-size: .85rem; }
+  </style>
+</head>
+<body>
+<div class="caixa" id="tela-carregando">
+  <p class="aviso">Carregando...</p>
+</div>
+
+<div class="caixa" id="tela-login" style="display:none">
+  <h1>🎤 VOZ</h1>
+  <p class="aviso">Entre pelo app principal da Central Executiva primeiro (a sessão é compartilhada).</p>
+  <a class="btn" id="link-login" href="#">Abrir Central Executiva</a>
+</div>
+
+<div class="caixa" id="tela-form" style="display:none">
+  <h1>🎤 Novo compromisso por voz</h1>
+  <label>Título</label>
+  <input id="f-titulo" enterkeyhint="next" />
+  <label>Data</label>
+  <input id="f-data" placeholder="Fale: hoje, amanhã, dia 20..." enterkeyhint="next" />
+  <label>Hora</label>
+  <input id="f-hora" placeholder="Fale: 15h, 3 da tarde, 15:30..." enterkeyhint="done" />
+</div>
+
+<div class="caixa ok" id="tela-ok" style="display:none">
+  <div class="marca">✅</div>
+  <p id="ok-texto"></p>
+  <button class="btn" id="btn-novo">Nova pendência por voz</button>
+  <a class="link" id="link-agenda" href="#">Abrir Agenda na Central Executiva</a>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="./firebase-config.js"></script>
+<script>
+const URL_APP = "https://joaoibira-ux.github.io/central-executiva/";
+const $ = id => document.getElementById(id);
+function mostrar(id) {
+  ["tela-carregando", "tela-login", "tela-form", "tela-ok"].forEach(t => { $(t).style.display = t === id ? "" : "none"; });
+}
+function escHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+firebase.initializeApp(window.FIREBASE_CONFIG);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+$("link-login").href = URL_APP + "login.html";
+$("link-agenda").href = URL_APP + "agenda.html";
+
+// ---------- Interpretação de data/hora faladas (mesmo parser da Central Executiva) ----------
+const MESES_FALADOS = { janeiro: 1, fevereiro: 2, "março": 3, marco: 3, abril: 4, maio: 5, junho: 6, julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12 };
+const DIAS_SEMANA_FALADOS = { domingo: 0, segunda: 1, "segunda-feira": 1, "terça": 2, terca: 2, "terça-feira": 2, quarta: 3, "quarta-feira": 3, quinta: 4, "quinta-feira": 4, sexta: 5, "sexta-feira": 5, sabado: 6, "sábado": 6 };
+
+function interpretarDataFalada(texto) {
+  const t = (texto || "").trim().toLowerCase().replace(/[.,]/g, "");
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const paraISO = d => d.toISOString().slice(0, 10);
+  if (/depois de amanh[ãa]/.test(t)) return paraISO(new Date(hoje.getTime() + 2 * 864e5));
+  if (/amanh[ãa]/.test(t)) return paraISO(new Date(hoje.getTime() + 864e5));
+  if (/^hoje$/.test(t)) return paraISO(hoje);
+  for (const nome in DIAS_SEMANA_FALADOS) {
+    if (t.includes(nome)) {
+      const d = new Date(hoje);
+      do { d.setDate(d.getDate() + 1); } while (d.getDay() !== DIAS_SEMANA_FALADOS[nome]);
+      return paraISO(d);
+    }
+  }
+  const mBarra = t.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})/);
+  if (mBarra) {
+    const dia = Number(mBarra[1]), mes = Number(mBarra[2]);
+    let d = new Date(hoje.getFullYear(), mes - 1, dia);
+    if (d < hoje) d = new Date(hoje.getFullYear() + 1, mes - 1, dia);
+    if (!isNaN(d) && d.getDate() === dia) return paraISO(d);
+  }
+  const mNomeMes = t.match(/(\d{1,2})\s*(?:de\s*)?(janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)/);
+  if (mNomeMes) {
+    const dia = Number(mNomeMes[1]), mes = MESES_FALADOS[mNomeMes[2]];
+    let d = new Date(hoje.getFullYear(), mes - 1, dia);
+    if (d < hoje) d = new Date(hoje.getFullYear() + 1, mes - 1, dia);
+    if (!isNaN(d) && d.getDate() === dia) return paraISO(d);
+  }
+  const mSoDia = t.match(/dia\s*(\d{1,2})/);
+  if (mSoDia) {
+    const dia = Number(mSoDia[1]);
+    let d = new Date(hoje.getFullYear(), hoje.getMonth(), dia);
+    if (d < hoje) d = new Date(hoje.getFullYear(), hoje.getMonth() + 1, dia);
+    if (!isNaN(d) && d.getDate() === dia) return paraISO(d);
+  }
+  return null;
+}
+
+function interpretarHoraFalada(texto) {
+  const t = (texto || "").trim().toLowerCase().replace(/[.,]/g, "");
+  if (/meio\s*dia/.test(t)) return "12:00";
+  if (/meia\s*noite/.test(t)) return "00:00";
+  let h = null, m = 0;
+  const mHM = t.match(/(\d{1,2})\s*[:h]\s*(\d{2})?/);
+  if (mHM) { h = Number(mHM[1]); m = mHM[2] ? Number(mHM[2]) : 0; }
+  else {
+    const mSo = t.match(/(\d{1,2})\s*horas?/);
+    if (mSo) h = Number(mSo[1]);
+  }
+  if (h === null) return null;
+  if (/e\s*meia/.test(t)) m = 30;
+  else if (/e\s*quinze/.test(t)) m = 15;
+  const tarde = /tarde/.test(t), noite = /noite/.test(t), manha = /manh[ãa]/.test(t);
+  if ((tarde || noite) && h < 12) h += 12;
+  if (manha && h === 12) h = 0;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+}
+
+function fmtDataBR(iso) {
+  const [a, m, d] = iso.split("-");
+  return d + "/" + m + "/" + a;
+}
+
+// ---------- Fluxo da tela ----------
+function iniciarFormulario(uid) {
+  mostrar("tela-form");
+  const campoTitulo = $("f-titulo"), campoData = $("f-data"), campoHora = $("f-hora");
+  campoTitulo.value = ""; campoData.value = ""; campoHora.value = "";
+  campoTitulo.focus();
+
+  function aoConfirmarCampo(campo, fn) {
+    campo.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); fn(); } };
+  }
+  aoConfirmarCampo(campoTitulo, () => {
+    if (!campoTitulo.value.trim()) { alert("Dite o título primeiro."); return; }
+    campoData.focus();
+  });
+  aoConfirmarCampo(campoData, () => {
+    const iso = interpretarDataFalada(campoData.value);
+    if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); return; }
+    campoData.value = fmtDataBR(iso);
+    campoData.dataset.iso = iso;
+    campoHora.focus();
+  });
+  aoConfirmarCampo(campoHora, async () => {
+    const texto = campoHora.value.trim();
+    let hhmm = "";
+    if (texto) {
+      hhmm = interpretarHoraFalada(texto);
+      if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); return; }
+    }
+    const titulo = campoTitulo.value.trim();
+    const iso = campoData.dataset.iso;
+    try {
+      await db.collection("usuarios").doc(uid).collection("agenda").add({
+        titulo, data: iso, hora: hhmm, local: "", obs: "", anexos: [],
+        feito: false, alarmeContagem: 0, alarmeVisto: false, telegramEnviado: false, whatsappEnviado: false,
+        criadoEm: new Date().toISOString()
+      });
+      $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>" + fmtDataBR(iso) + (hhmm ? " às " + hhmm : "");
+      mostrar("tela-ok");
+    } catch (e) {
+      alert("Não deu pra salvar: " + e.message);
+    }
+  });
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) {
+    try {
+      const rec = new SR();
+      rec.lang = "pt-BR"; rec.continuous = false; rec.interimResults = true;
+      rec.onresult = e => { campoTitulo.value = Array.from(e.results).map(r => r[0].transcript).join(""); };
+      rec.start();
+    } catch (e) { /* microfone negado ou API indisponível — campo já fica focado */ }
+  }
+}
+
+$("btn-novo").onclick = () => iniciarFormulario(auth.currentUser.uid);
+
+auth.onAuthStateChanged(user => {
+  if (user) iniciarFormulario(user.uid);
+  else mostrar("tela-login");
+});
+</script>
+</body>
+</html>
