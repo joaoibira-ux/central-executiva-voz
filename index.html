@@ -20,16 +20,23 @@
       min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center;
       padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
     }
-    .caixa { width: 100%; max-width: 420px; }
-    h1 { font-size: 1.3rem; letter-spacing: .05em; margin-bottom: 18px; text-align: center; }
-    label { display: block; margin: 14px 0 5px; font-size: .8rem; color: #8ea9cc; }
+    .caixa { width: 100%; max-width: 420px; text-align: center; }
+    h1 { font-size: 1.3rem; letter-spacing: .05em; margin-bottom: 18px; }
+    label { display: block; margin: 14px 0 5px; font-size: .8rem; color: #8ea9cc; text-align: left; }
     input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #1d4a8a; background: #0a1a3a; color: #e8f2ff; font: inherit; }
-    .btn { width: 100%; margin-top: 18px; border: 0; border-radius: 10px; padding: 13px; font: inherit; font-weight: 600; cursor: pointer; background: #3ab4ff; color: #021227; }
-    .btn.sec { background: transparent; color: #e8f2ff; border: 1px solid #1d4a8a; margin-top: 10px; }
-    .aviso { font-size: .85rem; color: #8ea9cc; line-height: 1.5; text-align: center; }
-    .ok { text-align: center; }
-    .ok .marca { font-size: 2.2rem; margin-bottom: 8px; }
-    .link { display: block; text-align: center; margin-top: 14px; color: #3ab4ff; text-decoration: none; font-size: .85rem; }
+    .btn { width: 100%; margin-top: 18px; border: 0; border-radius: 10px; padding: 13px; font: inherit; font-weight: 600; cursor: pointer; background: #3ab4ff; color: #021227; text-decoration: none; display: inline-block; }
+    .aviso { font-size: .85rem; color: #8ea9cc; line-height: 1.5; }
+
+    /* Tela de escuta — microfone pulsando + legenda do que está sendo dito */
+    .pulso { font-size: 3.6rem; animation: pulsar 1.3s ease-in-out infinite; }
+    @keyframes pulsar { 0%, 100% { transform: scale(1); opacity: .8; } 50% { transform: scale(1.18); opacity: 1; } }
+    .etapa { margin-top: 16px; font-size: .95rem; color: #8ea9cc; }
+    .transcript { margin-top: 10px; font-size: 1.4rem; min-height: 1.7em; font-weight: 600; }
+
+    /* Confirmação de salvo — rápida, só o essencial */
+    .marca { font-size: 3.4rem; margin-bottom: 10px; animation: entrarMarca .35s ease; }
+    @keyframes entrarMarca { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    #ok-texto { font-size: 1.1rem; }
   </style>
 </head>
 <body>
@@ -43,6 +50,15 @@
   <a class="btn" id="link-login" href="#">Abrir Central Executiva</a>
 </div>
 
+<!-- Fluxo COM reconhecimento de voz real: sem caixas de texto, só o microfone -->
+<div class="caixa" id="tela-ouvindo" style="display:none">
+  <div class="pulso">🎤</div>
+  <p class="etapa" id="ouvindo-etapa">Diga o título do compromisso...</p>
+  <p class="transcript" id="ouvindo-texto">&nbsp;</p>
+</div>
+
+<!-- Fallback SEM reconhecimento de voz (dispositivo não suporta): dita pelo
+     microfone do próprio teclado, campo por campo -->
 <div class="caixa" id="tela-form" style="display:none">
   <h1>🎤 Novo compromisso por voz</h1>
   <label>Título</label>
@@ -53,11 +69,10 @@
   <input id="f-hora" placeholder="Fale: 15h, 3 da tarde, 15:30..." enterkeyhint="done" />
 </div>
 
-<div class="caixa ok" id="tela-ok" style="display:none">
+<!-- Confirmação — aparece por 2s e volta sozinha a ouvir o próximo -->
+<div class="caixa" id="tela-ok" style="display:none">
   <div class="marca">✅</div>
   <p id="ok-texto"></p>
-  <button class="btn" id="btn-novo">Nova pendência por voz</button>
-  <a class="link" id="link-agenda" href="#">Abrir Agenda na Central Executiva</a>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -68,7 +83,7 @@
 const URL_APP = "https://joaoibira-ux.github.io/central-executiva/";
 const $ = id => document.getElementById(id);
 function mostrar(id) {
-  ["tela-carregando", "tela-login", "tela-form", "tela-ok"].forEach(t => { $(t).style.display = t === id ? "" : "none"; });
+  ["tela-carregando", "tela-login", "tela-ouvindo", "tela-form", "tela-ok"].forEach(t => { $(t).style.display = t === id ? "" : "none"; });
 }
 function escHtml(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -79,7 +94,6 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 
 $("link-login").href = URL_APP + "login.html";
-$("link-agenda").href = URL_APP + "agenda.html";
 
 // ---------- Interpretação de data/hora faladas (mesmo parser da Central Executiva) ----------
 const MESES_FALADOS = { janeiro: 1, fevereiro: 2, "março": 3, marco: 3, abril: 4, maio: 5, junho: 6, julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12 };
@@ -149,93 +163,119 @@ function fmtDataBR(iso) {
   return d + "/" + m + "/" + a;
 }
 
-// ---------- Reconhecimento de voz por campo ----------
-// "aoConfirmar" dispara quando o campo é "confirmado" — pelo fim natural da
-// escuta do reconhecimento de voz (parou de falar) OU, sem suporte a isso,
-// pelo Enter do teclado nativo (fallback de ditado por teclado). A guarda
-// "jaConfirmado" evita disparar duas vezes se os dois caminhos coincidirem.
-function ligarCampoDeVoz(campo, aoConfirmar) {
-  let jaConfirmado = false;
-  function confirmar() {
-    if (jaConfirmado) return;
-    jaConfirmado = true;
-    aoConfirmar();
-  }
-  campo.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); confirmar(); } };
-
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return;
-  try {
-    const rec = new SR();
-    rec.lang = "pt-BR"; rec.continuous = false; rec.interimResults = true;
-    rec.onresult = e => { campo.value = Array.from(e.results).map(r => r[0].transcript).join(""); };
-    rec.onend = confirmar;
-    rec.onerror = () => {}; // deixa o onend seguinte (ou o Enter manual) resolver
-    rec.start();
-  } catch (e) { /* microfone negado ou API indisponível — cai no Enter do teclado */ }
+async function salvarCompromisso(uid, titulo, iso, hhmm) {
+  await db.collection("usuarios").doc(uid).collection("agenda").add({
+    titulo, data: iso, hora: hhmm, local: "", obs: "", anexos: [],
+    feito: false, alarmeContagem: 0, alarmeVisto: false, telegramEnviado: false, whatsappEnviado: false,
+    criadoEm: new Date().toISOString()
+  });
+  $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>" + fmtDataBR(iso) + (hhmm ? " às " + hhmm : "");
+  mostrar("tela-ok");
 }
 
-// ---------- Fluxo da tela (Título → Data → Hora → salva) ----------
-function iniciarFormulario(uid) {
-  mostrar("tela-form");
-  const campoTitulo = $("f-titulo"), campoData = $("f-data"), campoHora = $("f-hora");
-  campoTitulo.value = ""; campoData.value = ""; campoHora.value = "";
+const TEM_RECONHECIMENTO_DE_VOZ = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
+// ---------- Fluxo COM reconhecimento de voz real (sem caixas de texto) ----------
+// Cada etapa liga o microfone sozinha; "onend" (parou de falar) decide o
+// resultado e já avança — nenhum toque na tela em momento nenhum. Termina a
+// hora, salva, mostra "✅ Salvo" por 2s e volta a ouvir o título do próximo.
+function ouvirFala(aoResultadoParcial, aoTerminar) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new SR();
+  rec.lang = "pt-BR"; rec.continuous = false; rec.interimResults = true;
+  let textoFinal = "";
+  rec.onresult = e => { textoFinal = Array.from(e.results).map(r => r[0].transcript).join(""); aoResultadoParcial(textoFinal); };
+  rec.onend = () => aoTerminar(textoFinal);
+  rec.onerror = () => aoTerminar(textoFinal);
+  try { rec.start(); } catch (e) { aoTerminar(""); }
+}
+
+function iniciarFluxoComVoz(uid) {
+  mostrar("tela-ouvindo");
   let tentativasTitulo = 0;
+  function etapa(texto) { $("ouvindo-etapa").textContent = texto; $("ouvindo-texto").textContent = ""; }
+
   function ouvirTitulo() {
-    campoTitulo.focus();
-    ligarCampoDeVoz(campoTitulo, () => {
-      if (!campoTitulo.value.trim()) {
+    etapa("Diga o título do compromisso...");
+    ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
+      if (!texto.trim()) {
         tentativasTitulo++;
-        if (tentativasTitulo >= 4) { alert("Não consegui ouvir o título — tente tocar no campo e digitar."); return; }
-        ouvirTitulo(); // não ouviu nada, tenta de novo sozinho
+        if (tentativasTitulo >= 5) { alert("Não consegui ouvir — tente num lugar mais silencioso."); ouvirTitulo(); tentativasTitulo = 0; return; }
+        ouvirTitulo();
         return;
       }
-      ouvirData();
+      ouvirData(texto.trim());
     });
   }
-  function ouvirData() {
-    campoData.focus();
-    ligarCampoDeVoz(campoData, () => {
-      const iso = interpretarDataFalada(campoData.value);
-      if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); return; }
-      campoData.value = fmtDataBR(iso);
-      campoData.dataset.iso = iso;
-      ouvirHora();
+  function ouvirData(titulo) {
+    etapa("Agora diga a data (hoje, amanhã, dia 20...)");
+    ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
+      const iso = interpretarDataFalada(texto);
+      if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); ouvirData(titulo); return; }
+      ouvirHora(titulo, iso);
     });
   }
-  function ouvirHora() {
-    campoHora.focus();
-    ligarCampoDeVoz(campoHora, async () => {
-      const texto = campoHora.value.trim();
+  function ouvirHora(titulo, iso) {
+    etapa("Agora diga a hora (ou fique em silêncio pra pular)");
+    ouvirFala(t => { $("ouvindo-texto").textContent = t; }, async texto => {
       let hhmm = "";
-      if (texto) {
+      if (texto.trim()) {
         hhmm = interpretarHoraFalada(texto);
-        if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); return; }
+        if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); ouvirHora(titulo, iso); return; }
       }
-      const titulo = campoTitulo.value.trim();
-      const iso = campoData.dataset.iso;
       try {
-        await db.collection("usuarios").doc(uid).collection("agenda").add({
-          titulo, data: iso, hora: hhmm, local: "", obs: "", anexos: [],
-          feito: false, alarmeContagem: 0, alarmeVisto: false, telegramEnviado: false, whatsappEnviado: false,
-          criadoEm: new Date().toISOString()
-        });
-        $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>" + fmtDataBR(iso) + (hhmm ? " às " + hhmm : "");
-        mostrar("tela-ok");
+        await salvarCompromisso(uid, titulo, iso, hhmm);
+        setTimeout(() => iniciarFluxoComVoz(uid), 2000);
       } catch (e) {
         alert("Não deu pra salvar: " + e.message);
+        ouvirTitulo();
       }
     });
   }
   ouvirTitulo();
 }
 
-$("btn-novo").onclick = () => iniciarFormulario(auth.currentUser.uid);
+// ---------- Fallback SEM reconhecimento de voz: dita pelo teclado, campo a campo ----------
+function iniciarFluxoComTeclado(uid) {
+  mostrar("tela-form");
+  const campoTitulo = $("f-titulo"), campoData = $("f-data"), campoHora = $("f-hora");
+  campoTitulo.value = ""; campoData.value = ""; campoHora.value = "";
+
+  function aoConfirmar(campo, fn) {
+    campo.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); fn(); } };
+  }
+  campoTitulo.focus();
+  aoConfirmar(campoTitulo, () => {
+    if (!campoTitulo.value.trim()) { alert("Dite o título primeiro."); return; }
+    campoData.focus();
+  });
+  aoConfirmar(campoData, () => {
+    const iso = interpretarDataFalada(campoData.value);
+    if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); return; }
+    campoData.value = fmtDataBR(iso);
+    campoData.dataset.iso = iso;
+    campoHora.focus();
+  });
+  aoConfirmar(campoHora, async () => {
+    const texto = campoHora.value.trim();
+    let hhmm = "";
+    if (texto) {
+      hhmm = interpretarHoraFalada(texto);
+      if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); return; }
+    }
+    try {
+      await salvarCompromisso(uid, campoTitulo.value.trim(), campoData.dataset.iso, hhmm);
+      setTimeout(() => iniciarFluxoComTeclado(uid), 2000);
+    } catch (e) {
+      alert("Não deu pra salvar: " + e.message);
+    }
+  });
+}
 
 auth.onAuthStateChanged(user => {
-  if (user) iniciarFormulario(user.uid);
-  else mostrar("tela-login");
+  if (!user) { mostrar("tela-login"); return; }
+  if (TEM_RECONHECIMENTO_DE_VOZ) iniciarFluxoComVoz(user.uid);
+  else iniciarFluxoComTeclado(user.uid);
 });
 </script>
 </body>

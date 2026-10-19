@@ -20,10 +20,17 @@ compromisso criado aqui aparece normalmente na Agenda/Pendências de lá.
 **Sem Service Worker de propósito** — é um app pequeno o bastante pra não precisar, e isso
 evita toda a classe de bugs de cache/scope que causou o problema original.
 
-**Fluxo de voz** (mesmo parser best-effort do app principal, ver `CLAUDE.md` de lá):
-Título (texto normal, dita pelo microfone do teclado do iOS) → toca "próximo" → Data (fala
-"hoje"/"amanhã"/"dia 20") → "próximo" → Hora (fala "15h"/"3 da tarde", ou deixa vazio) →
-"concluído" → salva e mostra confirmação.
+**Fluxo de voz (2026-10-19, descoberto que `webkitSpeechRecognition` funciona de verdade
+no iPhone do João — ao contrário do que se presumia no app principal)**: sem caixa de
+texto nenhuma na tela — só o microfone pulsando + legenda do que está sendo dito.
+`ouvirFala()` liga o reconhecimento pra uma etapa; o `onend` (parou de falar) decide o
+resultado e já avança sozinho sem nenhum toque: Título → Data (interpretada por
+`interpretarDataFalada`) → Hora (`interpretarHoraFalada`, pode ficar em silêncio pra
+pular) → salva → mostra "✅ Salvo" por 2s → volta a ouvir o título do próximo, em loop,
+sem fim. Se não ouvir nada no título, tenta de novo sozinho (até 5x antes de avisar).
+Se o dispositivo não suportar `SpeechRecognition` (`TEM_RECONHECIMENTO_DE_VOZ` falso),
+cai no fallback antigo: campos de texto visíveis, dita pelo microfone do teclado do iOS,
+avança no Enter/"próximo" do teclado — mesmo fim (salva, 2s, volta a ouvir).
 
 **Versionamento:** este app não segue o padrão de versão obrigatória dos outros sistemas do
 João (é pequeno demais, sem Service Worker pra forçar atualização) — mudanças só precisam
