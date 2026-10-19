@@ -149,58 +149,86 @@ function fmtDataBR(iso) {
   return d + "/" + m + "/" + a;
 }
 
-// ---------- Fluxo da tela ----------
+// ---------- Reconhecimento de voz por campo ----------
+// "aoConfirmar" dispara quando o campo é "confirmado" — pelo fim natural da
+// escuta do reconhecimento de voz (parou de falar) OU, sem suporte a isso,
+// pelo Enter do teclado nativo (fallback de ditado por teclado). A guarda
+// "jaConfirmado" evita disparar duas vezes se os dois caminhos coincidirem.
+function ligarCampoDeVoz(campo, aoConfirmar) {
+  let jaConfirmado = false;
+  function confirmar() {
+    if (jaConfirmado) return;
+    jaConfirmado = true;
+    aoConfirmar();
+  }
+  campo.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); confirmar(); } };
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  try {
+    const rec = new SR();
+    rec.lang = "pt-BR"; rec.continuous = false; rec.interimResults = true;
+    rec.onresult = e => { campo.value = Array.from(e.results).map(r => r[0].transcript).join(""); };
+    rec.onend = confirmar;
+    rec.onerror = () => {}; // deixa o onend seguinte (ou o Enter manual) resolver
+    rec.start();
+  } catch (e) { /* microfone negado ou API indisponível — cai no Enter do teclado */ }
+}
+
+// ---------- Fluxo da tela (Título → Data → Hora → salva) ----------
 function iniciarFormulario(uid) {
   mostrar("tela-form");
   const campoTitulo = $("f-titulo"), campoData = $("f-data"), campoHora = $("f-hora");
   campoTitulo.value = ""; campoData.value = ""; campoHora.value = "";
-  campoTitulo.focus();
 
-  function aoConfirmarCampo(campo, fn) {
-    campo.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); fn(); } };
+  let tentativasTitulo = 0;
+  function ouvirTitulo() {
+    campoTitulo.focus();
+    ligarCampoDeVoz(campoTitulo, () => {
+      if (!campoTitulo.value.trim()) {
+        tentativasTitulo++;
+        if (tentativasTitulo >= 4) { alert("Não consegui ouvir o título — tente tocar no campo e digitar."); return; }
+        ouvirTitulo(); // não ouviu nada, tenta de novo sozinho
+        return;
+      }
+      ouvirData();
+    });
   }
-  aoConfirmarCampo(campoTitulo, () => {
-    if (!campoTitulo.value.trim()) { alert("Dite o título primeiro."); return; }
+  function ouvirData() {
     campoData.focus();
-  });
-  aoConfirmarCampo(campoData, () => {
-    const iso = interpretarDataFalada(campoData.value);
-    if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); return; }
-    campoData.value = fmtDataBR(iso);
-    campoData.dataset.iso = iso;
-    campoHora.focus();
-  });
-  aoConfirmarCampo(campoHora, async () => {
-    const texto = campoHora.value.trim();
-    let hhmm = "";
-    if (texto) {
-      hhmm = interpretarHoraFalada(texto);
-      if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); return; }
-    }
-    const titulo = campoTitulo.value.trim();
-    const iso = campoData.dataset.iso;
-    try {
-      await db.collection("usuarios").doc(uid).collection("agenda").add({
-        titulo, data: iso, hora: hhmm, local: "", obs: "", anexos: [],
-        feito: false, alarmeContagem: 0, alarmeVisto: false, telegramEnviado: false, whatsappEnviado: false,
-        criadoEm: new Date().toISOString()
-      });
-      $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>" + fmtDataBR(iso) + (hhmm ? " às " + hhmm : "");
-      mostrar("tela-ok");
-    } catch (e) {
-      alert("Não deu pra salvar: " + e.message);
-    }
-  });
-
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SR) {
-    try {
-      const rec = new SR();
-      rec.lang = "pt-BR"; rec.continuous = false; rec.interimResults = true;
-      rec.onresult = e => { campoTitulo.value = Array.from(e.results).map(r => r[0].transcript).join(""); };
-      rec.start();
-    } catch (e) { /* microfone negado ou API indisponível — campo já fica focado */ }
+    ligarCampoDeVoz(campoData, () => {
+      const iso = interpretarDataFalada(campoData.value);
+      if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); return; }
+      campoData.value = fmtDataBR(iso);
+      campoData.dataset.iso = iso;
+      ouvirHora();
+    });
   }
+  function ouvirHora() {
+    campoHora.focus();
+    ligarCampoDeVoz(campoHora, async () => {
+      const texto = campoHora.value.trim();
+      let hhmm = "";
+      if (texto) {
+        hhmm = interpretarHoraFalada(texto);
+        if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); return; }
+      }
+      const titulo = campoTitulo.value.trim();
+      const iso = campoData.dataset.iso;
+      try {
+        await db.collection("usuarios").doc(uid).collection("agenda").add({
+          titulo, data: iso, hora: hhmm, local: "", obs: "", anexos: [],
+          feito: false, alarmeContagem: 0, alarmeVisto: false, telegramEnviado: false, whatsappEnviado: false,
+          criadoEm: new Date().toISOString()
+        });
+        $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>" + fmtDataBR(iso) + (hhmm ? " às " + hhmm : "");
+        mostrar("tela-ok");
+      } catch (e) {
+        alert("Não deu pra salvar: " + e.message);
+      }
+    });
+  }
+  ouvirTitulo();
 }
 
 $("btn-novo").onclick = () => iniciarFormulario(auth.currentUser.uid);
