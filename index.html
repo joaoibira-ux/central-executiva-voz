@@ -190,6 +190,66 @@ function ouvirFala(aoResultadoParcial, aoTerminar) {
   try { rec.start(); } catch (e) { aoTerminar(""); }
 }
 
+// Se o título já vier com data (e opcionalmente hora) dentro da mesma frase
+// ("teste 01 hoje às 15 horas"), extrai os três de uma vez e pula direto pro
+// salvamento, sem passar pelas telas de Data/Hora. Procura o PRIMEIRO
+// marcador de data na frase; o que vem antes dele é o título; dentro do que
+// vem depois, procura um marcador de hora pra separar data de hora. Se não
+// achar nenhum marcador de data, retorna null e o fluxo segue normal
+// (pergunta Data e Hora em etapas separadas).
+const REGEX_DIAS_SEMANA = Object.keys(DIAS_SEMANA_FALADOS).map(nome => new RegExp("\\b" + nome + "\\b"));
+const MARCADORES_DATA = [
+  /depois de amanh[ãa]/, /amanh[ãa]/, /\bhoje\b/,
+  ...REGEX_DIAS_SEMANA,
+  /\d{1,2}\s*[\/\-]\s*\d{1,2}/,
+  /\d{1,2}\s*(?:de\s*)?(?:janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)/,
+  /\bdia\s*\d{1,2}\b/
+];
+const MARCADORES_HORA = [/meio\s*dia/, /meia\s*noite/, /\d{1,2}\s*[:h]\s*\d{0,2}/, /\d{1,2}\s*horas?/];
+
+function extrairDataHoraDoTitulo(textoOriginal) {
+  const t = textoOriginal.toLowerCase();
+  let idxData = -1;
+  for (const re of MARCADORES_DATA) {
+    const m = t.match(re);
+    if (m && (idxData === -1 || m.index < idxData)) idxData = m.index;
+  }
+  if (idxData === -1) return null;
+
+  const titulo = textoOriginal.slice(0, idxData).trim();
+  if (!titulo) return null;
+
+  const resto = textoOriginal.slice(idxData);
+  const restoMin = resto.toLowerCase();
+  let idxHora = -1;
+  for (const re of MARCADORES_HORA) {
+    const m = restoMin.match(re);
+    if (m && (idxHora === -1 || m.index < idxHora)) idxHora = m.index;
+  }
+
+  const parteData = idxHora === -1 ? resto : resto.slice(0, idxHora);
+  const parteHora = idxHora === -1 ? "" : resto.slice(idxHora);
+
+  const iso = interpretarDataFalada(parteData);
+  if (!iso) return null;
+  const hhmm = parteHora.trim() ? interpretarHoraFalada(parteHora) : "";
+  if (parteHora.trim() && !hhmm) return null;
+
+  return { titulo, iso, hhmm };
+}
+
+async function salvarTudoDeUmaVez(titulo, iso, hhmm) {
+  const uid = await prontoAuth;
+  if (!uid) { mostrar("tela-login"); return; }
+  try {
+    await salvarCompromisso(uid, titulo, iso, hhmm);
+    setTimeout(ouvirTitulo, 2000);
+  } catch (e) {
+    alert("Não deu pra salvar: " + e.message);
+    ouvirTitulo();
+  }
+}
+
 // "uid" só é necessário no finalzinho (salvar) — a escuta do Título começa
 // ANTES de saber se o login já resolveu, pra pedir a permissão do microfone
 // no mesmo instante em que o ícone é tocado (sem esperar o Firebase Auth
@@ -211,7 +271,10 @@ function ouvirTitulo() {
       return;
     }
     tentativasTitulo = 0;
-    ouvirData(texto.trim());
+    const falado = texto.trim();
+    const tudo = extrairDataHoraDoTitulo(falado);
+    if (tudo) { salvarTudoDeUmaVez(tudo.titulo, tudo.iso, tudo.hhmm); return; }
+    ouvirData(falado);
   });
 }
 function ouvirData(titulo) {

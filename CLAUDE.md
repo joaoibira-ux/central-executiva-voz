@@ -32,6 +32,15 @@ Se o dispositivo não suportar `SpeechRecognition` (`TEM_RECONHECIMENTO_DE_VOZ` 
 cai no fallback antigo: campos de texto visíveis, dita pelo microfone do teclado do iOS,
 avança no Enter/"próximo" do teclado — mesmo fim (salva, 2s, volta a ouvir).
 
+**Tudo numa frase só (2026-10-21):** se o usuário já dita o título com data (e opcionalmente
+hora) embutidos — ex: "teste 01 hoje às 15 horas" — `extrairDataHoraDoTitulo()` acha o
+primeiro marcador de data na frase (hoje/amanhã/dia da semana/"dia N"/data numérica), usa o
+que vem antes como título, e procura um marcador de hora no restante pra separar data de
+hora. Se conseguir interpretar a data (e a hora, se houver uma palavra de hora presente),
+salva direto via `salvarTudoDeUmaVez()` sem passar pelas etapas de Data/Hora. Se não achar
+nenhum marcador de data na frase, ou achar um trecho de hora que não dá pra interpretar,
+retorna `null` e o fluxo normal segue (pergunta Data, depois Hora, em etapas separadas).
+
 **Mesmo toque autoriza o microfone (2026-10-21):** quando há `SpeechRecognition`, a escuta
 do Título (`ouvirTitulo()`, e portanto o pedido de permissão do microfone pelo iOS) começa
 **imediatamente** na carga da página, em paralelo com o Firebase Auth resolver — não espera
