@@ -238,6 +238,41 @@ function extrairDataHoraDoTitulo(textoOriginal) {
   return { titulo, iso, hhmm };
 }
 
+// Se a palavra "pendência(s)" aparecer no início OU no fim da frase
+// ("pendências comprar açúcar" ou "comprar açúcar pendências"), o restante é
+// o título, vai pra Pendências (mesma coleção "agenda", sem campo "data" — é
+// assim que o app principal já distingue Pendências de Agenda) e NÃO volta a
+// ouvir o próximo: mostra o aviso e tenta fechar o app.
+function extrairPendencia(textoOriginal) {
+  let m = textoOriginal.match(/^\s*pend[eê]ncias?\s+(.+)$/i);
+  if (!m) m = textoOriginal.match(/^(.+)\s+pend[eê]ncias?\s*$/i);
+  if (!m) return null;
+  const resto = m[1].trim();
+  if (!resto) return null;
+  return resto.charAt(0).toUpperCase() + resto.slice(1);
+}
+
+async function salvarPendenciaEFechar(titulo) {
+  const uid = await prontoAuth;
+  if (!uid) { mostrar("tela-login"); return; }
+  try {
+    await db.collection("usuarios").doc(uid).collection("agenda").add({
+      titulo, data: "", hora: "", local: "", obs: "", anexos: [],
+      feito: false, alarmeContagem: 0, alarmeVisto: false, telegramEnviado: false, whatsappEnviado: false,
+      criadoEm: new Date().toISOString()
+    });
+    $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>Salvo em Pendências";
+    mostrar("tela-ok");
+    // iOS costuma bloquear window.close() em apps adicionados à Tela de
+    // Início (só funciona pra abas abertas via script) — tenta mesmo assim;
+    // se não fechar, o aviso acima fica na tela em vez de voltar a ouvir.
+    setTimeout(() => { window.close(); }, 900);
+  } catch (e) {
+    alert("Não deu pra salvar: " + e.message);
+    ouvirTitulo();
+  }
+}
+
 async function salvarTudoDeUmaVez(titulo, iso, hhmm) {
   const uid = await prontoAuth;
   if (!uid) { mostrar("tela-login"); return; }
@@ -272,6 +307,8 @@ function ouvirTitulo() {
     }
     tentativasTitulo = 0;
     const falado = texto.trim();
+    const pendenciaTitulo = extrairPendencia(falado);
+    if (pendenciaTitulo) { salvarPendenciaEFechar(pendenciaTitulo); return; }
     const tudo = extrairDataHoraDoTitulo(falado);
     if (tudo) { salvarTudoDeUmaVez(tudo.titulo, tudo.iso, tudo.hhmm); return; }
     ouvirData(falado);

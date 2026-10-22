@@ -32,6 +32,17 @@ Se o dispositivo não suportar `SpeechRecognition` (`TEM_RECONHECIMENTO_DE_VOZ` 
 cai no fallback antigo: campos de texto visíveis, dita pelo microfone do teclado do iOS,
 avança no Enter/"próximo" do teclado — mesmo fim (salva, 2s, volta a ouvir).
 
+**Atalho de voz pra Pendências (2026-10-21):** se a palavra "pendência(s)" aparecer no
+início OU no fim da frase ditada ("pendências comprar açúcar" ou "comprar açúcar
+pendências"), `extrairPendencia()` reconhece e o restante da frase (com a primeira letra
+maiúscula) vai direto pra Pendências — salva na mesma coleção `agenda`, mas com
+`data: ""` (é assim que Pendências já se distingue da Agenda no app principal: item sem
+data). Diferente do fluxo normal, depois de salvar NÃO volta a ouvir o título do próximo:
+mostra o aviso "Salvo em Pendências" e tenta `window.close()`. **Limitação conhecida:**
+iOS normalmente bloqueia `window.close()` em apps adicionados à Tela de Início (só
+funciona de verdade em abas abertas via script) — por isso o aviso fica fixo na tela como
+fallback visual caso o fechamento automático não funcione nesse aparelho.
+
 **Tudo numa frase só (2026-10-21):** se o usuário já dita o título com data (e opcionalmente
 hora) embutidos — ex: "teste 01 hoje às 15 horas" — `extrairDataHoraDoTitulo()` acha o
 primeiro marcador de data na frase (hoje/amanhã/dia da semana/"dia N"/data numérica), usa o
