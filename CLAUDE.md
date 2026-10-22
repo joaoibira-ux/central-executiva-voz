@@ -38,10 +38,18 @@ pendências"), `extrairPendencia()` reconhece e o restante da frase (com a prime
 maiúscula) vai direto pra Pendências — salva na mesma coleção `agenda`, mas com
 `data: ""` (é assim que Pendências já se distingue da Agenda no app principal: item sem
 data). Diferente do fluxo normal, depois de salvar NÃO volta a ouvir o título do próximo:
-mostra o aviso "Salvo em Pendências" e tenta `window.close()`. **Limitação conhecida:**
-iOS normalmente bloqueia `window.close()` em apps adicionados à Tela de Início (só
-funciona de verdade em abas abertas via script) — por isso o aviso fica fixo na tela como
-fallback visual caso o fechamento automático não funcione nesse aparelho.
+mostra o aviso "Salvo em Pendências" e chama `tentarFecharApp()`.
+
+**Dizer tudo numa frase também fecha o app (2026-10-21):** quando `extrairDataHoraDoTitulo()`
+reconhece título+data(+hora) numa frase só e salva direto (`salvarTudoDeUmaVez()`), também
+NÃO volta a ouvir o título do próximo — mostra o aviso de salvo e chama `tentarFecharApp()`,
+igual ao caso de Pendências. Só o fluxo em 3 etapas separadas (dita só o título, depois só a
+data, depois só a hora) continua em loop depois de salvar, voltando a ouvir o título
+seguinte — é o único jeito de criar vários compromissos em sequência sem reabrir o app.
+**Limitação conhecida:** iOS normalmente bloqueia `window.close()` em apps adicionados à
+Tela de Início (só funciona de verdade em abas abertas via script) — por isso o aviso de
+salvo fica fixo na tela como fallback visual caso o fechamento automático não funcione
+nesse aparelho.
 
 **Tudo numa frase só (2026-10-21):** se o usuário já dita o título com data (e opcionalmente
 hora) embutidos — ex: "teste 01 hoje às 15 horas" — `extrairDataHoraDoTitulo()` acha o

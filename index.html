@@ -252,6 +252,13 @@ function extrairPendencia(textoOriginal) {
   return resto.charAt(0).toUpperCase() + resto.slice(1);
 }
 
+// iOS costuma bloquear window.close() em apps adicionados à Tela de Início
+// (só funciona de verdade pra abas abertas via script) — tenta mesmo assim;
+// se não fechar, o aviso de "Salvo" já mostrado na tela fica como fallback.
+function tentarFecharApp() {
+  setTimeout(() => { window.close(); }, 900);
+}
+
 async function salvarPendenciaEFechar(titulo) {
   const uid = await prontoAuth;
   if (!uid) { mostrar("tela-login"); return; }
@@ -263,10 +270,7 @@ async function salvarPendenciaEFechar(titulo) {
     });
     $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>Salvo em Pendências";
     mostrar("tela-ok");
-    // iOS costuma bloquear window.close() em apps adicionados à Tela de
-    // Início (só funciona pra abas abertas via script) — tenta mesmo assim;
-    // se não fechar, o aviso acima fica na tela em vez de voltar a ouvir.
-    setTimeout(() => { window.close(); }, 900);
+    tentarFecharApp();
   } catch (e) {
     alert("Não deu pra salvar: " + e.message);
     ouvirTitulo();
@@ -278,7 +282,7 @@ async function salvarTudoDeUmaVez(titulo, iso, hhmm) {
   if (!uid) { mostrar("tela-login"); return; }
   try {
     await salvarCompromisso(uid, titulo, iso, hhmm);
-    setTimeout(ouvirTitulo, 2000);
+    tentarFecharApp();
   } catch (e) {
     alert("Não deu pra salvar: " + e.message);
     ouvirTitulo();
