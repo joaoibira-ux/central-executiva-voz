@@ -190,49 +190,56 @@ function ouvirFala(aoResultadoParcial, aoTerminar) {
   try { rec.start(); } catch (e) { aoTerminar(""); }
 }
 
-function iniciarFluxoComVoz(uid) {
-  mostrar("tela-ouvindo");
-  let tentativasTitulo = 0;
-  function etapa(texto) { $("ouvindo-etapa").textContent = texto; $("ouvindo-texto").textContent = ""; }
+// "uid" só é necessário no finalzinho (salvar) — a escuta do Título começa
+// ANTES de saber se o login já resolveu, pra pedir a permissão do microfone
+// no mesmo instante em que o ícone é tocado (sem esperar o Firebase Auth
+// responder primeiro, que daria uma demora perceptível entre abrir o app e
+// aparecer o pedido de microfone). "prontoAuth" (definido mais abaixo) resolve
+// assim que o login é confirmado — na prática, sempre antes do usuário
+// terminar de ditar os 3 campos.
+let tentativasTitulo = 0;
+function etapa(texto) { $("ouvindo-etapa").textContent = texto; $("ouvindo-texto").textContent = ""; }
 
-  function ouvirTitulo() {
-    etapa("Diga o título do compromisso...");
-    ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
-      if (!texto.trim()) {
-        tentativasTitulo++;
-        if (tentativasTitulo >= 5) { alert("Não consegui ouvir — tente num lugar mais silencioso."); ouvirTitulo(); tentativasTitulo = 0; return; }
-        ouvirTitulo();
-        return;
-      }
-      ouvirData(texto.trim());
-    });
-  }
-  function ouvirData(titulo) {
-    etapa("Agora diga a data (hoje, amanhã, dia 20...)");
-    ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
-      const iso = interpretarDataFalada(texto);
-      if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); ouvirData(titulo); return; }
-      ouvirHora(titulo, iso);
-    });
-  }
-  function ouvirHora(titulo, iso) {
-    etapa("Agora diga a hora (ou fique em silêncio pra pular)");
-    ouvirFala(t => { $("ouvindo-texto").textContent = t; }, async texto => {
-      let hhmm = "";
-      if (texto.trim()) {
-        hhmm = interpretarHoraFalada(texto);
-        if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); ouvirHora(titulo, iso); return; }
-      }
-      try {
-        await salvarCompromisso(uid, titulo, iso, hhmm);
-        setTimeout(() => iniciarFluxoComVoz(uid), 2000);
-      } catch (e) {
-        alert("Não deu pra salvar: " + e.message);
-        ouvirTitulo();
-      }
-    });
-  }
-  ouvirTitulo();
+function ouvirTitulo() {
+  mostrar("tela-ouvindo");
+  etapa("Diga o título do compromisso...");
+  ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
+    if (!texto.trim()) {
+      tentativasTitulo++;
+      if (tentativasTitulo >= 5) { alert("Não consegui ouvir — tente num lugar mais silencioso."); tentativasTitulo = 0; }
+      ouvirTitulo();
+      return;
+    }
+    tentativasTitulo = 0;
+    ouvirData(texto.trim());
+  });
+}
+function ouvirData(titulo) {
+  etapa("Agora diga a data (hoje, amanhã, dia 20...)");
+  ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
+    const iso = interpretarDataFalada(texto);
+    if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); ouvirData(titulo); return; }
+    ouvirHora(titulo, iso);
+  });
+}
+function ouvirHora(titulo, iso) {
+  etapa("Agora diga a hora (ou fique em silêncio pra pular)");
+  ouvirFala(t => { $("ouvindo-texto").textContent = t; }, async texto => {
+    let hhmm = "";
+    if (texto.trim()) {
+      hhmm = interpretarHoraFalada(texto);
+      if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); ouvirHora(titulo, iso); return; }
+    }
+    const uid = await prontoAuth;
+    if (!uid) { mostrar("tela-login"); return; } // raro: terminou de ditar antes do login confirmar, e não tava logado
+    try {
+      await salvarCompromisso(uid, titulo, iso, hhmm);
+      setTimeout(ouvirTitulo, 2000);
+    } catch (e) {
+      alert("Não deu pra salvar: " + e.message);
+      ouvirTitulo();
+    }
+  });
 }
 
 // ---------- Fallback SEM reconhecimento de voz: dita pelo teclado, campo a campo ----------
@@ -272,11 +279,22 @@ function iniciarFluxoComTeclado(uid) {
   });
 }
 
+// Resolve com o uid (ou null se não tiver login) assim que o Firebase Auth
+// responder — sem travar o início da escuta por voz, que já está rodando
+// desde o toque no ícone.
+let resolverProntoAuth;
+const prontoAuth = new Promise(r => { resolverProntoAuth = r; });
+
 auth.onAuthStateChanged(user => {
-  if (!user) { mostrar("tela-login"); return; }
-  if (TEM_RECONHECIMENTO_DE_VOZ) iniciarFluxoComVoz(user.uid);
-  else iniciarFluxoComTeclado(user.uid);
+  resolverProntoAuth(user ? user.uid : null);
+  if (!user && !TEM_RECONHECIMENTO_DE_VOZ) { mostrar("tela-login"); return; }
+  if (!TEM_RECONHECIMENTO_DE_VOZ) iniciarFluxoComTeclado(user.uid);
 });
+
+// Com reconhecimento de voz: começa a ouvir (e pede a permissão do
+// microfone) já na carga da página, aproveitando o mesmo toque no ícone —
+// sem esperar o login resolver primeiro.
+if (TEM_RECONHECIMENTO_DE_VOZ) ouvirTitulo();
 </script>
 </body>
 </html>

@@ -32,6 +32,18 @@ Se o dispositivo não suportar `SpeechRecognition` (`TEM_RECONHECIMENTO_DE_VOZ` 
 cai no fallback antigo: campos de texto visíveis, dita pelo microfone do teclado do iOS,
 avança no Enter/"próximo" do teclado — mesmo fim (salva, 2s, volta a ouvir).
 
+**Mesmo toque autoriza o microfone (2026-10-21):** quando há `SpeechRecognition`, a escuta
+do Título (`ouvirTitulo()`, e portanto o pedido de permissão do microfone pelo iOS) começa
+**imediatamente** na carga da página, em paralelo com o Firebase Auth resolver — não espera
+`onAuthStateChanged` responder primeiro. Isso faz o aviso de permissão aparecer colado ao
+toque no ícone da Tela de Início, sem demora perceptível. O `uid` só é de fato necessário
+no fim (dentro de `ouvirHora`, antes de salvar), onde se faz `await prontoAuth` — uma
+Promise resolvida pelo `onAuthStateChanged` com o uid (ou `null` se não houver login). No
+caso raro de terminar de ditar os 3 campos antes do login confirmar e não haver sessão,
+mostra a tela de login nesse ponto. O fallback de teclado (sem reconhecimento de voz) não
+tem esse ganho de pedir permissão mais cedo, então continua simplesmente esperando o
+`onAuthStateChanged` normalmente antes de começar.
+
 **Versionamento:** este app não segue o padrão de versão obrigatória dos outros sistemas do
 João (é pequeno demais, sem Service Worker pra forçar atualização) — mudanças só precisam
 de commit + push, o GitHub Pages atualiza sozinho.
