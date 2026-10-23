@@ -40,6 +40,13 @@ maiúscula) vai direto pra Pendências — salva na mesma coleção `agenda`, ma
 data). Diferente do fluxo normal, depois de salvar NÃO volta a ouvir o título do próximo:
 mostra o aviso "Salvo em Pendências" e chama `tentarFecharApp()`.
 
+**Hora padrão quando não é dita (2026-10-23):** em `extrairDataHoraDoTitulo()`, se a frase
+tem data reconhecida mas nenhuma hora, o padrão é: data = hoje → hora atual + 5 minutos
+(`horaAtualMais5min()`, pra já funcionar como próximo alarme); data = qualquer dia futuro →
+`07:00` fixo. Comparação feita com `isoDeHoje()` (mesma lógica de zerar as horas e converter
+com `toISOString().slice(0,10)` já usada dentro de `interpretarDataFalada`, pra ficar
+consistente com o mesmo viés de fuso horário).
+
 **Título sozinho também já conclui, sem perguntar a data (2026-10-23):** as funções
 `ouvirData()`/`ouvirHora()` do fluxo em 3 etapas foram REMOVIDAS. Se o título ditado não
 tiver nem "pendência(s)" explícito nem data embutida reconhecível (`extrairPendencia()` e

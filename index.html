@@ -199,12 +199,12 @@ function ouvirFala(aoResultadoParcial, aoTerminar) {
 }
 
 // Se o título já vier com data (e opcionalmente hora) dentro da mesma frase
-// ("teste 01 hoje às 15 horas"), extrai os três de uma vez e pula direto pro
-// salvamento, sem passar pelas telas de Data/Hora. Procura o PRIMEIRO
-// marcador de data na frase; o que vem antes dele é o título; dentro do que
-// vem depois, procura um marcador de hora pra separar data de hora. Se não
-// achar nenhum marcador de data, retorna null e o fluxo segue normal
-// (pergunta Data e Hora em etapas separadas).
+// ("teste 01 hoje às 15 horas"), extrai os três de uma vez. Procura o
+// PRIMEIRO marcador de data na frase; o que vem antes dele é o título;
+// dentro do que vem depois, procura um marcador de hora pra separar data de
+// hora. Se não achar nenhum marcador de data, retorna null (e quem chamou
+// trata o texto como só o título, indo pra Pendências). Se achar data mas
+// não hora, usa um horário padrão (ver isoDeHoje/horaAtualMais5min abaixo).
 const REGEX_DIAS_SEMANA = Object.keys(DIAS_SEMANA_FALADOS).map(nome => new RegExp("\\b" + nome + "\\b"));
 const MARCADORES_DATA = [
   /depois de amanh[ãa]/, /amanh[ãa]/, /\bhoje\b/,
@@ -240,10 +240,23 @@ function extrairDataHoraDoTitulo(textoOriginal) {
 
   const iso = interpretarDataFalada(parteData);
   if (!iso) return null;
-  const hhmm = parteHora.trim() ? interpretarHoraFalada(parteHora) : "";
+  let hhmm = parteHora.trim() ? interpretarHoraFalada(parteHora) : "";
   if (parteHora.trim() && !hhmm) return null;
 
+  // Não disse a hora: hoje ganha "agora + 5 minutos" (pra já cair como
+  // próximo alarme); uma data futura ganha 07:00 (horário padrão do dia).
+  if (!hhmm) hhmm = iso === isoDeHoje() ? horaAtualMais5min() : "07:00";
+
   return { titulo, iso, hhmm };
+}
+
+function isoDeHoje() {
+  const h = new Date(); h.setHours(0, 0, 0, 0);
+  return h.toISOString().slice(0, 10);
+}
+function horaAtualMais5min() {
+  const d = new Date(Date.now() + 5 * 60000);
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
 
 // Se a palavra "pendência(s)" aparecer no início OU no fim da frase
