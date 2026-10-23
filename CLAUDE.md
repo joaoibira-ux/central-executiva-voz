@@ -79,28 +79,30 @@ original de antes dessas tentativas. O usuário fecha o app manualmente (swipe) 
 quiser, a qualquer momento; o app nunca fica travado esperando um fechamento que não
 acontece sozinho.
 
-**Mesmo toque autoriza o microfone — duas tentativas até a versão atual (2026-10-21 →
+**Mesmo toque autoriza o microfone — evolução até a versão atual (2026-10-21 →
 2026-10-23):**
 1. 1ª tentativa: chamava `ouvirTitulo()` automaticamente na carga da página (sem esperar
-   login), na esperança de a permissão do microfone aparecer colada ao toque no ícone da
-   Tela de Início. Não funcionou: abrir o app pelo ícone (fora do contexto JS da página
-   carregada) não conta como gesto de usuário pro Safari, que bloqueava
-   `SpeechRecognition.start()` silenciosamente — o app nunca escutava de verdade.
+   login). Não funcionou: abrir o app pelo ícone não conta como gesto de usuário pro
+   Safari, que bloqueava `SpeechRecognition.start()` silenciosamente.
 2. 2ª tentativa: tela fixa "Toque para falar" que só chamava `ouvirTitulo()` dentro de um
-   `click` no `document`. Resolvia o bloqueio, mas sempre exigia esse toque extra MESMO
-   quando o Safari já teria deixado passar sem ele (ex.: permissão já concedida antes) —
-   ficou "ícone → toque na tela → ainda apareceu o diálogo de autorização do iPhone", 3
-   passos percebidos pelo usuário.
-3. **Versão atual:** `ouvirTitulo(true)` é chamado direto na carga, sem esperar toque
-   nenhum. `ouvirFala()` ganhou um 3º callback opcional `aoFalharSemComecar` — só usado
-   nessa 1ª tentativa — que dispara quando o reconhecimento termina/erra SEM o evento
-   `onstart` ter disparado (ou seja, o Safari bloqueou antes mesmo de ativar o microfone).
-   Só nesse caso cai em `mostrarTelaDeToque()` (mostra "Toque para falar" e arma um
-   `click` único que chama `ouvirTitulo(false)`, sem fallback — essa segunda vez já está
-   dentro de um gesto real). Quando o Safari deixa passar sem toque (ex.: permissão já
-   concedida antes nesse mesmo app), elimina esse passo inteiro. O diálogo nativo de
-   autorização do iPhone em si só deve aparecer na primeira vez que o site pede a
-   permissão — depois fica concedida permanentemente para esse app/origem.
+   `click` no `document`, e depois de salvar usava `setTimeout(() => ouvirTitulo(false),
+   2000)` pra retomar o loop sozinho. Essa 2ª parte não funcionou: o Safari exige um toque
+   real pra CADA chamada de `rec.start()`, não só a primeira da sessão — então, depois de
+   salvar o primeiro compromisso, o app ficava com a aparência de preso na tela "✅ Salvo"
+   (na prática `ouvirTitulo()` era chamado pelo `setTimeout`, mas falhava silenciosamente
+   de novo por falta de gesto, numa recursão rápida que nunca chegava a repintar a tela).
+3. **Versão atual:** não existe mais distinção entre "primeira tentativa automática" e as
+   seguintes — `ouvirTitulo()` (sem parâmetro) sempre passa `mostrarTelaDeToque` como 3º
+   argumento (`aoFalharSemComecar`) pra `ouvirFala()`. Toda vez — na carga da página E
+   depois de cada salvamento via `setTimeout(ouvirTitulo, 2000)` — tenta ouvir sozinho
+   primeiro; se o Safari bloquear (o evento `onstart` nunca dispara), cai em
+   `mostrarTelaDeToque()` (mostra "Toque para falar/continuar" e arma um `click` único que
+   chama `ouvirTitulo()` de novo, já dentro de um gesto real). Na prática, isso significa
+   que CADA compromisso criado em sequência pode pedir mais um toque — não só o primeiro
+   — dependendo de o Safari exigir gesto a cada chamada ou não nesse aparelho. O diálogo
+   nativo de autorização do microfone em si só deve aparecer na primeira vez que o site
+   pede a permissão — depois fica concedida permanentemente para esse app/origem; é a
+   trava de "gesto de usuário" (sem diálogo nenhum, só bloqueio silencioso) que se repete.
 
 O `uid` continua só sendo necessário no fim (dentro de `salvarPendencia`/
 `salvarTudoDeUmaVez`, antes de salvar), via `await prontoAuth` — uma Promise resolvida pelo `onAuthStateChanged` com o uid (ou

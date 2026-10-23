@@ -297,7 +297,7 @@ async function salvarPendencia(titulo) {
     });
     $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>Salvo em Pendências";
     mostrar("tela-ok");
-    setTimeout(() => ouvirTitulo(false), 2000);
+    setTimeout(ouvirTitulo, 2000);
   } catch (e) {
     alert("Não deu pra salvar: " + e.message);
     ouvirTitulo();
@@ -309,7 +309,7 @@ async function salvarTudoDeUmaVez(titulo, iso, hhmm) {
   if (!uid) { mostrar("tela-login"); return; }
   try {
     await salvarCompromisso(uid, titulo, iso, hhmm);
-    setTimeout(() => ouvirTitulo(false), 2000);
+    setTimeout(ouvirTitulo, 2000);
   } catch (e) {
     alert("Não deu pra salvar: " + e.message);
     ouvirTitulo();
@@ -326,12 +326,13 @@ async function salvarTudoDeUmaVez(titulo, iso, hhmm) {
 let tentativasTitulo = 0;
 function etapa(texto) { $("ouvindo-etapa").textContent = texto; $("ouvindo-texto").textContent = ""; }
 
-// "primeiraTentativaAutomatica": só true na chamada feita sozinha ao carregar
-// a página (sem toque do usuário ainda). Se o Safari deixar passar (às vezes
-// deixa, quando a permissão já foi concedida antes), nem precisa do toque na
-// tela; se bloquear, cai em "mostrarTelaDeToque" em vez de ficar em loop
-// silencioso tentando de novo sem nunca ouvir nada de verdade.
-function ouvirTitulo(primeiraTentativaAutomatica) {
+// O Safari parece exigir um toque real pra CADA chamada de rec.start(), não
+// só a primeira da sessão — por isso toda chamada de ouvirTitulo() (a
+// automática da carga da página, e também as que retomam o loop depois de
+// salvar, via setTimeout) tenta sozinha primeiro e, se o Safari bloquear
+// (nunca dispara "onstart"), cai em mostrarTelaDeToque() em vez de ficar
+// presa tentando de novo sem nunca ouvir nada de verdade.
+function ouvirTitulo() {
   mostrar("tela-ouvindo");
   etapa("Diga o título do compromisso...");
   ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
@@ -351,12 +352,12 @@ function ouvirTitulo(primeiraTentativaAutomatica) {
     // data, já conclui e salva direto em Pendências (mesmo destino de um
     // compromisso sem data).
     salvarPendencia(falado.charAt(0).toUpperCase() + falado.slice(1));
-  }, primeiraTentativaAutomatica ? mostrarTelaDeToque : undefined);
+  }, mostrarTelaDeToque);
 }
 
 function mostrarTelaDeToque() {
   mostrar("tela-toque");
-  document.addEventListener("click", () => ouvirTitulo(false), { once: true });
+  document.addEventListener("click", ouvirTitulo, { once: true });
 }
 
 // ---------- Fallback SEM reconhecimento de voz: dita pelo teclado, campo a campo ----------
@@ -414,7 +415,7 @@ auth.onAuthStateChanged(user => {
 // se isso for bloqueado (nunca chega a disparar "onstart") é que cai no
 // fallback "Toque para falar" — ver mostrarTelaDeToque(). Não espera o login
 // resolver primeiro, que continua em paralelo via "prontoAuth".
-if (TEM_RECONHECIMENTO_DE_VOZ) ouvirTitulo(true);
+if (TEM_RECONHECIMENTO_DE_VOZ) ouvirTitulo();
 </script>
 </body>
 </html>
