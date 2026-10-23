@@ -105,7 +105,7 @@ function interpretarDataFalada(texto) {
   const paraISO = d => d.toISOString().slice(0, 10);
   if (/depois de amanh[ãa]/.test(t)) return paraISO(new Date(hoje.getTime() + 2 * 864e5));
   if (/amanh[ãa]/.test(t)) return paraISO(new Date(hoje.getTime() + 864e5));
-  if (/^hoje$/.test(t)) return paraISO(hoje);
+  if (/\bhoje\b/.test(t)) return paraISO(hoje);
   for (const nome in DIAS_SEMANA_FALADOS) {
     if (t.includes(nome)) {
       const d = new Date(hoje);
