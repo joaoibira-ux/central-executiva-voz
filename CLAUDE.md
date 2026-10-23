@@ -37,8 +37,7 @@ início OU no fim da frase ditada ("pendências comprar açúcar" ou "comprar a�
 pendências"), `extrairPendencia()` reconhece e o restante da frase (com a primeira letra
 maiúscula) vai direto pra Pendências — salva na mesma coleção `agenda`, mas com
 `data: ""` (é assim que Pendências já se distingue da Agenda no app principal: item sem
-data). Diferente do fluxo normal, depois de salvar NÃO volta a ouvir o título do próximo:
-mostra o aviso "Salvo em Pendências" e chama `tentarFecharApp()`.
+data), via `salvarPendencia()`.
 
 **Hora padrão quando não é dita (2026-10-23):** em `extrairDataHoraDoTitulo()`, se a frase
 tem data reconhecida mas nenhuma hora, o padrão é: data = hoje → hora atual + 5 minutos
@@ -51,33 +50,34 @@ consistente com o mesmo viés de fuso horário).
 `ouvirData()`/`ouvirHora()` do fluxo em 3 etapas foram REMOVIDAS. Se o título ditado não
 tiver nem "pendência(s)" explícito nem data embutida reconhecível (`extrairPendencia()` e
 `extrairDataHoraDoTitulo()` ambos retornam `null`), em vez de perguntar a data em seguida,
-`ouvirTitulo()` já chama `salvarPendenciaEFechar()` direto com o próprio texto dito como
-título — mesmo destino de um compromisso sem data (Pendências) e mesmo comportamento de
-tentar fechar o app depois. Na prática, todo compromisso criado por este app acaba em um
-destes 3 caminhos a partir de uma única frase: Pendências (sem data nem hora mencionada,
-com ou sem a palavra "pendências"), Agenda com data+hora (quando ambas são reconhecidas na
-própria frase), ou, se a extração falhar de forma inesperada, cai no mesmo salvamento em
-Pendências — não existe mais pergunta de acompanhamento alguma.
-
-**Dizer tudo numa frase também fecha o app (2026-10-21):** quando `extrairDataHoraDoTitulo()`
-reconhece título+data(+hora) numa frase só e salva direto (`salvarTudoDeUmaVez()`), também
-NÃO volta a ouvir o título do próximo — mostra o aviso de salvo e chama `tentarFecharApp()`,
-igual ao caso de Pendências. Só o fluxo em 3 etapas separadas (dita só o título, depois só a
-data, depois só a hora) continua em loop depois de salvar, voltando a ouvir o título
-seguinte — é o único jeito de criar vários compromissos em sequência sem reabrir o app.
-**Limitação conhecida:** iOS normalmente bloqueia `window.close()` em apps adicionados à
-Tela de Início (só funciona de verdade em abas abertas via script) — por isso o aviso de
-salvo fica fixo na tela como fallback visual caso o fechamento automático não funcione
-nesse aparelho.
+`ouvirTitulo()` já chama `salvarPendencia()` direto com o próprio texto dito como título —
+mesmo destino de um compromisso sem data. Na prática, todo compromisso criado por este app
+acaba em um destes dois caminhos a partir de uma única frase: Pendências (sem data nem hora
+mencionada, com ou sem a palavra "pendências") ou Agenda com data+hora (quando a data — e
+opcionalmente a hora — é reconhecida na própria frase) — não existe mais pergunta de
+acompanhamento alguma.
 
 **Tudo numa frase só (2026-10-21):** se o usuário já dita o título com data (e opcionalmente
 hora) embutidos — ex: "teste 01 hoje às 15 horas" — `extrairDataHoraDoTitulo()` acha o
 primeiro marcador de data na frase (hoje/amanhã/dia da semana/"dia N"/data numérica), usa o
 que vem antes como título, e procura um marcador de hora no restante pra separar data de
-hora. Se conseguir interpretar a data (e a hora, se houver uma palavra de hora presente),
-salva direto via `salvarTudoDeUmaVez()` sem passar pelas etapas de Data/Hora. Se não achar
+hora. Se conseguir interpretar a data, salva direto via `salvarTudoDeUmaVez()`. Se não achar
 nenhum marcador de data na frase, ou achar um trecho de hora que não dá pra interpretar,
-retorna `null` e o fluxo normal segue (pergunta Data, depois Hora, em etapas separadas).
+retorna `null` e quem chamou trata o texto como só o título (vai pra Pendências).
+
+**Tentativa de fechar o app sozinho — REVERTIDA, confirmada impossível (2026-10-21 →
+2026-10-23):** depois de salvar (por Pendências ou por "tudo numa frase"), chegou a chamar
+`window.close()` esperando sair do app automaticamente. **Testado no iPhone real e
+confirmado que não funciona**: o app ficava "enganchado" na tela de confirmação, só saía
+com o usuário forçando o fechamento manual pelo seletor de apps — e isso, por sua vez, fazia
+o Safari perder a permissão do microfone e pedir autorização de novo na próxima abertura
+(ciclo ruim: salvar → travar → forçar fechar → perder permissão → autorizar de novo).
+**Comportamento atual, definitivo:** depois de qualquer salvamento (Pendências ou com
+data/hora), mostra "✅ Salvo" por 2s e **volta a ouvir o título do próximo**
+(`setTimeout(() => ouvirTitulo(false), 2000)`), em loop sem fim — igual ao comportamento
+original de antes dessas tentativas. O usuário fecha o app manualmente (swipe) quando
+quiser, a qualquer momento; o app nunca fica travado esperando um fechamento que não
+acontece sozinho.
 
 **Mesmo toque autoriza o microfone — duas tentativas até a versão atual (2026-10-21 →
 2026-10-23):**
@@ -102,7 +102,7 @@ retorna `null` e o fluxo normal segue (pergunta Data, depois Hora, em etapas sep
    autorização do iPhone em si só deve aparecer na primeira vez que o site pede a
    permissão — depois fica concedida permanentemente para esse app/origem.
 
-O `uid` continua só sendo necessário no fim (dentro de `salvarPendenciaEFechar`/
+O `uid` continua só sendo necessário no fim (dentro de `salvarPendencia`/
 `salvarTudoDeUmaVez`, antes de salvar), via `await prontoAuth` — uma Promise resolvida pelo `onAuthStateChanged` com o uid (ou
 `null`), que roda em paralelo desde a carga da página, independente do toque. O fallback
 de teclado (sem reconhecimento de voz) não tem esse problema de gesto, então continua

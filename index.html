@@ -269,8 +269,7 @@ function horaAtualMais5min() {
 // Se a palavra "pendência(s)" aparecer no início OU no fim da frase
 // ("pendências comprar açúcar" ou "comprar açúcar pendências"), o restante é
 // o título, vai pra Pendências (mesma coleção "agenda", sem campo "data" — é
-// assim que o app principal já distingue Pendências de Agenda) e NÃO volta a
-// ouvir o próximo: mostra o aviso e tenta fechar o app.
+// assim que o app principal já distingue Pendências de Agenda).
 function extrairPendencia(textoOriginal) {
   let m = textoOriginal.match(/^\s*pend[eê]ncias?\s+(.+)$/i);
   if (!m) m = textoOriginal.match(/^(.+)\s+pend[eê]ncias?\s*$/i);
@@ -280,14 +279,14 @@ function extrairPendencia(textoOriginal) {
   return resto.charAt(0).toUpperCase() + resto.slice(1);
 }
 
-// iOS costuma bloquear window.close() em apps adicionados à Tela de Início
-// (só funciona de verdade pra abas abertas via script) — tenta mesmo assim;
-// se não fechar, o aviso de "Salvo" já mostrado na tela fica como fallback.
-function tentarFecharApp() {
-  setTimeout(() => { window.close(); }, 900);
-}
-
-async function salvarPendenciaEFechar(titulo) {
+// window.close() testado e confirmado que NÃO funciona em apps adicionados à
+// Tela de Início no iOS (o app fica "enganchado" na tela de confirmação, só
+// sai forçando o fechamento manual — e aí o Safari costuma perder a
+// permissão do microfone e pedir autorização de novo da próxima vez). Em vez
+// de tentar fechar, volta a ouvir o título do próximo automaticamente: assim
+// o app nunca fica travado numa tela morta, e o usuário fecha manualmente
+// (swipe) quando quiser, sem precisar de mais nenhum toque antes disso.
+async function salvarPendencia(titulo) {
   const uid = await prontoAuth;
   if (!uid) { mostrar("tela-login"); return; }
   try {
@@ -298,7 +297,7 @@ async function salvarPendenciaEFechar(titulo) {
     });
     $("ok-texto").innerHTML = "<b>" + escHtml(titulo) + "</b><br>Salvo em Pendências";
     mostrar("tela-ok");
-    tentarFecharApp();
+    setTimeout(() => ouvirTitulo(false), 2000);
   } catch (e) {
     alert("Não deu pra salvar: " + e.message);
     ouvirTitulo();
@@ -310,7 +309,7 @@ async function salvarTudoDeUmaVez(titulo, iso, hhmm) {
   if (!uid) { mostrar("tela-login"); return; }
   try {
     await salvarCompromisso(uid, titulo, iso, hhmm);
-    tentarFecharApp();
+    setTimeout(() => ouvirTitulo(false), 2000);
   } catch (e) {
     alert("Não deu pra salvar: " + e.message);
     ouvirTitulo();
@@ -345,13 +344,13 @@ function ouvirTitulo(primeiraTentativaAutomatica) {
     tentativasTitulo = 0;
     const falado = texto.trim();
     const pendenciaTitulo = extrairPendencia(falado);
-    if (pendenciaTitulo) { salvarPendenciaEFechar(pendenciaTitulo); return; }
+    if (pendenciaTitulo) { salvarPendencia(pendenciaTitulo); return; }
     const tudo = extrairDataHoraDoTitulo(falado);
     if (tudo) { salvarTudoDeUmaVez(tudo.titulo, tudo.iso, tudo.hhmm); return; }
     // Disse só o título, sem data nem "pendências" — em vez de perguntar a
     // data, já conclui e salva direto em Pendências (mesmo destino de um
     // compromisso sem data).
-    salvarPendenciaEFechar(falado.charAt(0).toUpperCase() + falado.slice(1));
+    salvarPendencia(falado.charAt(0).toUpperCase() + falado.slice(1));
   }, primeiraTentativaAutomatica ? mostrarTelaDeToque : undefined);
 }
 
