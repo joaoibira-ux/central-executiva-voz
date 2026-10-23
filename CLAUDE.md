@@ -40,6 +40,18 @@ maiúscula) vai direto pra Pendências — salva na mesma coleção `agenda`, ma
 data). Diferente do fluxo normal, depois de salvar NÃO volta a ouvir o título do próximo:
 mostra o aviso "Salvo em Pendências" e chama `tentarFecharApp()`.
 
+**Título sozinho também já conclui, sem perguntar a data (2026-10-23):** as funções
+`ouvirData()`/`ouvirHora()` do fluxo em 3 etapas foram REMOVIDAS. Se o título ditado não
+tiver nem "pendência(s)" explícito nem data embutida reconhecível (`extrairPendencia()` e
+`extrairDataHoraDoTitulo()` ambos retornam `null`), em vez de perguntar a data em seguida,
+`ouvirTitulo()` já chama `salvarPendenciaEFechar()` direto com o próprio texto dito como
+título — mesmo destino de um compromisso sem data (Pendências) e mesmo comportamento de
+tentar fechar o app depois. Na prática, todo compromisso criado por este app acaba em um
+destes 3 caminhos a partir de uma única frase: Pendências (sem data nem hora mencionada,
+com ou sem a palavra "pendências"), Agenda com data+hora (quando ambas são reconhecidas na
+própria frase), ou, se a extração falhar de forma inesperada, cai no mesmo salvamento em
+Pendências — não existe mais pergunta de acompanhamento alguma.
+
 **Dizer tudo numa frase também fecha o app (2026-10-21):** quando `extrairDataHoraDoTitulo()`
 reconhece título+data(+hora) numa frase só e salva direto (`salvarTudoDeUmaVez()`), também
 NÃO volta a ouvir o título do próximo — mostra o aviso de salvo e chama `tentarFecharApp()`,

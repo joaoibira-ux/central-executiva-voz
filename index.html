@@ -323,34 +323,10 @@ function ouvirTitulo() {
     if (pendenciaTitulo) { salvarPendenciaEFechar(pendenciaTitulo); return; }
     const tudo = extrairDataHoraDoTitulo(falado);
     if (tudo) { salvarTudoDeUmaVez(tudo.titulo, tudo.iso, tudo.hhmm); return; }
-    ouvirData(falado);
-  });
-}
-function ouvirData(titulo) {
-  etapa("Agora diga a data (hoje, amanhã, dia 20...)");
-  ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
-    const iso = interpretarDataFalada(texto);
-    if (!iso) { alert('Não entendi a data — tente "hoje", "amanhã" ou "dia 20".'); ouvirData(titulo); return; }
-    ouvirHora(titulo, iso);
-  });
-}
-function ouvirHora(titulo, iso) {
-  etapa("Agora diga a hora (ou fique em silêncio pra pular)");
-  ouvirFala(t => { $("ouvindo-texto").textContent = t; }, async texto => {
-    let hhmm = "";
-    if (texto.trim()) {
-      hhmm = interpretarHoraFalada(texto);
-      if (!hhmm) { alert('Não entendi a hora — tente "15h", "3 da tarde" ou "15:30".'); ouvirHora(titulo, iso); return; }
-    }
-    const uid = await prontoAuth;
-    if (!uid) { mostrar("tela-login"); return; } // raro: terminou de ditar antes do login confirmar, e não tava logado
-    try {
-      await salvarCompromisso(uid, titulo, iso, hhmm);
-      setTimeout(ouvirTitulo, 2000);
-    } catch (e) {
-      alert("Não deu pra salvar: " + e.message);
-      ouvirTitulo();
-    }
+    // Disse só o título, sem data nem "pendências" — em vez de perguntar a
+    // data, já conclui e salva direto em Pendências (mesmo destino de um
+    // compromisso sem data).
+    salvarPendenciaEFechar(falado.charAt(0).toUpperCase() + falado.slice(1));
   });
 }
 
