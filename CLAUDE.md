@@ -79,23 +79,34 @@ salva direto via `salvarTudoDeUmaVez()` sem passar pelas etapas de Data/Hora. Se
 nenhum marcador de data na frase, ou achar um trecho de hora que não dá pra interpretar,
 retorna `null` e o fluxo normal segue (pergunta Data, depois Hora, em etapas separadas).
 
-**Mesmo toque autoriza o microfone — tentativa revertida, substituída por "Toque para
-falar" (2026-10-21→2026-10-23):** a primeira versão chamava `ouvirTitulo()`
-automaticamente na carga da página (sem esperar login), na esperança de a permissão do
-microfone aparecer colada ao toque no ícone da Tela de Início. **Não funcionou**: o
-Safari/iOS só libera `SpeechRecognition.start()` dentro de um toque real DENTRO da
-página — abrir o app pelo ícone (fora do contexto JS da página carregada) não conta como
-esse gesto, então `rec.start()` ficava bloqueado silenciosamente e o app nunca escutava de
-verdade até um toque manual na tela. **Solução atual:** mostra uma tela "Toque para
-falar" ao carregar e só chama `ouvirTitulo()` dentro de um listener de `click` no
-`document` (`{ once: true }`) — ou seja, ainda é preciso 1 toque dentro do app depois de
-abri-lo (isso é uma política do navegador, não um bug), mas agora fica claro e imediato em
-vez de parecer travado na tela de "ouvindo" sem fazer nada. O `uid` continua só sendo
-necessário no fim (dentro de `ouvirHora`, antes de salvar), via `await prontoAuth` — uma
-Promise resolvida pelo `onAuthStateChanged` com o uid (ou `null`), que roda em paralelo
-desde a carga da página independente do toque. O fallback de teclado (sem reconhecimento
-de voz) não tem esse problema de gesto, então continua simplesmente esperando o
-`onAuthStateChanged` normalmente antes de começar.
+**Mesmo toque autoriza o microfone — duas tentativas até a versão atual (2026-10-21 →
+2026-10-23):**
+1. 1ª tentativa: chamava `ouvirTitulo()` automaticamente na carga da página (sem esperar
+   login), na esperança de a permissão do microfone aparecer colada ao toque no ícone da
+   Tela de Início. Não funcionou: abrir o app pelo ícone (fora do contexto JS da página
+   carregada) não conta como gesto de usuário pro Safari, que bloqueava
+   `SpeechRecognition.start()` silenciosamente — o app nunca escutava de verdade.
+2. 2ª tentativa: tela fixa "Toque para falar" que só chamava `ouvirTitulo()` dentro de um
+   `click` no `document`. Resolvia o bloqueio, mas sempre exigia esse toque extra MESMO
+   quando o Safari já teria deixado passar sem ele (ex.: permissão já concedida antes) —
+   ficou "ícone → toque na tela → ainda apareceu o diálogo de autorização do iPhone", 3
+   passos percebidos pelo usuário.
+3. **Versão atual:** `ouvirTitulo(true)` é chamado direto na carga, sem esperar toque
+   nenhum. `ouvirFala()` ganhou um 3º callback opcional `aoFalharSemComecar` — só usado
+   nessa 1ª tentativa — que dispara quando o reconhecimento termina/erra SEM o evento
+   `onstart` ter disparado (ou seja, o Safari bloqueou antes mesmo de ativar o microfone).
+   Só nesse caso cai em `mostrarTelaDeToque()` (mostra "Toque para falar" e arma um
+   `click` único que chama `ouvirTitulo(false)`, sem fallback — essa segunda vez já está
+   dentro de um gesto real). Quando o Safari deixa passar sem toque (ex.: permissão já
+   concedida antes nesse mesmo app), elimina esse passo inteiro. O diálogo nativo de
+   autorização do iPhone em si só deve aparecer na primeira vez que o site pede a
+   permissão — depois fica concedida permanentemente para esse app/origem.
+
+O `uid` continua só sendo necessário no fim (dentro de `salvarPendenciaEFechar`/
+`salvarTudoDeUmaVez`, antes de salvar), via `await prontoAuth` — uma Promise resolvida pelo `onAuthStateChanged` com o uid (ou
+`null`), que roda em paralelo desde a carga da página, independente do toque. O fallback
+de teclado (sem reconhecimento de voz) não tem esse problema de gesto, então continua
+simplesmente esperando o `onAuthStateChanged` normalmente antes de começar.
 
 **Versionamento:** este app não segue o padrão de versão obrigatória dos outros sistemas do
 João (é pequeno demais, sem Service Worker pra forçar atualização) — mudanças só precisam

@@ -187,15 +187,22 @@ const TEM_RECONHECIMENTO_DE_VOZ = !!(window.SpeechRecognition || window.webkitSp
 // Cada etapa liga o microfone sozinha; "onend" (parou de falar) decide o
 // resultado e já avança — nenhum toque na tela em momento nenhum. Termina a
 // hora, salva, mostra "✅ Salvo" por 2s e volta a ouvir o título do próximo.
-function ouvirFala(aoResultadoParcial, aoTerminar) {
+// "aoFalharSemComecar" (opcional) é só usado na 1ª tentativa automática logo
+// na carga da página: se o Safari bloquear por falta de um toque real (nunca
+// chega a disparar "onstart"), cai nesse callback em vez do fluxo normal de
+// "não ouviu nada" — ver mais abaixo.
+function ouvirFala(aoResultadoParcial, aoTerminar, aoFalharSemComecar) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const rec = new SR();
   rec.lang = "pt-BR"; rec.continuous = false; rec.interimResults = true;
-  let textoFinal = "";
+  let textoFinal = "", comecou = false, jaTratou = false;
+  const falhouSemComecar = () => { if (jaTratou) return; jaTratou = true; aoFalharSemComecar(); };
+  const terminou = () => { if (jaTratou) return; jaTratou = true; aoTerminar(textoFinal); };
+  rec.onstart = () => { comecou = true; };
   rec.onresult = e => { textoFinal = Array.from(e.results).map(r => r[0].transcript).join(""); aoResultadoParcial(textoFinal); };
-  rec.onend = () => aoTerminar(textoFinal);
-  rec.onerror = () => aoTerminar(textoFinal);
-  try { rec.start(); } catch (e) { aoTerminar(""); }
+  rec.onend = () => { if (!comecou && aoFalharSemComecar) falhouSemComecar(); else terminou(); };
+  rec.onerror = () => { if (!comecou && aoFalharSemComecar) falhouSemComecar(); else terminou(); };
+  try { rec.start(); } catch (e) { if (aoFalharSemComecar) falhouSemComecar(); else terminou(); }
 }
 
 // Se o título já vier com data (e opcionalmente hora) dentro da mesma frase
@@ -320,7 +327,12 @@ async function salvarTudoDeUmaVez(titulo, iso, hhmm) {
 let tentativasTitulo = 0;
 function etapa(texto) { $("ouvindo-etapa").textContent = texto; $("ouvindo-texto").textContent = ""; }
 
-function ouvirTitulo() {
+// "primeiraTentativaAutomatica": só true na chamada feita sozinha ao carregar
+// a página (sem toque do usuário ainda). Se o Safari deixar passar (às vezes
+// deixa, quando a permissão já foi concedida antes), nem precisa do toque na
+// tela; se bloquear, cai em "mostrarTelaDeToque" em vez de ficar em loop
+// silencioso tentando de novo sem nunca ouvir nada de verdade.
+function ouvirTitulo(primeiraTentativaAutomatica) {
   mostrar("tela-ouvindo");
   etapa("Diga o título do compromisso...");
   ouvirFala(t => { $("ouvindo-texto").textContent = t; }, texto => {
@@ -340,7 +352,12 @@ function ouvirTitulo() {
     // data, já conclui e salva direto em Pendências (mesmo destino de um
     // compromisso sem data).
     salvarPendenciaEFechar(falado.charAt(0).toUpperCase() + falado.slice(1));
-  });
+  }, primeiraTentativaAutomatica ? mostrarTelaDeToque : undefined);
+}
+
+function mostrarTelaDeToque() {
+  mostrar("tela-toque");
+  document.addEventListener("click", () => ouvirTitulo(false), { once: true });
 }
 
 // ---------- Fallback SEM reconhecimento de voz: dita pelo teclado, campo a campo ----------
@@ -392,16 +409,13 @@ auth.onAuthStateChanged(user => {
   if (!TEM_RECONHECIMENTO_DE_VOZ) iniciarFluxoComTeclado(user.uid);
 });
 
-// Com reconhecimento de voz: o Safari/iOS só libera SpeechRecognition.start()
-// dentro de um toque real na página — chamar sozinho na carga (sem gesto)
-// fica bloqueado silenciosamente e nunca escuta de verdade. Então mostra
-// "Toque para falar" e, no primeiro toque em QUALQUER lugar da tela,
-// ouvirTitulo() já dispara synchronamente dentro do próprio evento (sem
-// esperar o login resolver, que continua em paralelo via "prontoAuth").
-if (TEM_RECONHECIMENTO_DE_VOZ) {
-  mostrar("tela-toque");
-  document.addEventListener("click", ouvirTitulo, { once: true });
-}
+// Com reconhecimento de voz: tenta começar a ouvir já na carga da página,
+// sem esperar nenhum toque (o Safari às vezes libera, sobretudo quando a
+// permissão do microfone já foi concedida antes nesse mesmo app/origem). Só
+// se isso for bloqueado (nunca chega a disparar "onstart") é que cai no
+// fallback "Toque para falar" — ver mostrarTelaDeToque(). Não espera o login
+// resolver primeiro, que continua em paralelo via "prontoAuth".
+if (TEM_RECONHECIMENTO_DE_VOZ) ouvirTitulo(true);
 </script>
 </body>
 </html>
