@@ -50,6 +50,14 @@
   <a class="btn" id="link-login" href="#">Abrir Central Executiva</a>
 </div>
 
+<!-- O Safari/iOS só deixa começar o microfone dentro de um toque real na
+     página (abrir pelo ícone da Tela de Início não conta como esse gesto) —
+     por isso esse toque único é inevitável, diferente de uma trava/bug. -->
+<div class="caixa" id="tela-toque" style="display:none">
+  <div class="pulso">🎤</div>
+  <p class="etapa">Toque para falar</p>
+</div>
+
 <!-- Fluxo COM reconhecimento de voz real: sem caixas de texto, só o microfone -->
 <div class="caixa" id="tela-ouvindo" style="display:none">
   <div class="pulso">🎤</div>
@@ -83,7 +91,7 @@
 const URL_APP = "https://joaoibira-ux.github.io/central-executiva/";
 const $ = id => document.getElementById(id);
 function mostrar(id) {
-  ["tela-carregando", "tela-login", "tela-ouvindo", "tela-form", "tela-ok"].forEach(t => { $(t).style.display = t === id ? "" : "none"; });
+  ["tela-carregando", "tela-login", "tela-toque", "tela-ouvindo", "tela-form", "tela-ok"].forEach(t => { $(t).style.display = t === id ? "" : "none"; });
 }
 function escHtml(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -395,10 +403,16 @@ auth.onAuthStateChanged(user => {
   if (!TEM_RECONHECIMENTO_DE_VOZ) iniciarFluxoComTeclado(user.uid);
 });
 
-// Com reconhecimento de voz: começa a ouvir (e pede a permissão do
-// microfone) já na carga da página, aproveitando o mesmo toque no ícone —
-// sem esperar o login resolver primeiro.
-if (TEM_RECONHECIMENTO_DE_VOZ) ouvirTitulo();
+// Com reconhecimento de voz: o Safari/iOS só libera SpeechRecognition.start()
+// dentro de um toque real na página — chamar sozinho na carga (sem gesto)
+// fica bloqueado silenciosamente e nunca escuta de verdade. Então mostra
+// "Toque para falar" e, no primeiro toque em QUALQUER lugar da tela,
+// ouvirTitulo() já dispara synchronamente dentro do próprio evento (sem
+// esperar o login resolver, que continua em paralelo via "prontoAuth").
+if (TEM_RECONHECIMENTO_DE_VOZ) {
+  mostrar("tela-toque");
+  document.addEventListener("click", ouvirTitulo, { once: true });
+}
 </script>
 </body>
 </html>

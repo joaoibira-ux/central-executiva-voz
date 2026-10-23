@@ -60,16 +60,22 @@ salva direto via `salvarTudoDeUmaVez()` sem passar pelas etapas de Data/Hora. Se
 nenhum marcador de data na frase, ou achar um trecho de hora que não dá pra interpretar,
 retorna `null` e o fluxo normal segue (pergunta Data, depois Hora, em etapas separadas).
 
-**Mesmo toque autoriza o microfone (2026-10-21):** quando há `SpeechRecognition`, a escuta
-do Título (`ouvirTitulo()`, e portanto o pedido de permissão do microfone pelo iOS) começa
-**imediatamente** na carga da página, em paralelo com o Firebase Auth resolver — não espera
-`onAuthStateChanged` responder primeiro. Isso faz o aviso de permissão aparecer colado ao
-toque no ícone da Tela de Início, sem demora perceptível. O `uid` só é de fato necessário
-no fim (dentro de `ouvirHora`, antes de salvar), onde se faz `await prontoAuth` — uma
-Promise resolvida pelo `onAuthStateChanged` com o uid (ou `null` se não houver login). No
-caso raro de terminar de ditar os 3 campos antes do login confirmar e não haver sessão,
-mostra a tela de login nesse ponto. O fallback de teclado (sem reconhecimento de voz) não
-tem esse ganho de pedir permissão mais cedo, então continua simplesmente esperando o
+**Mesmo toque autoriza o microfone — tentativa revertida, substituída por "Toque para
+falar" (2026-10-21→2026-10-23):** a primeira versão chamava `ouvirTitulo()`
+automaticamente na carga da página (sem esperar login), na esperança de a permissão do
+microfone aparecer colada ao toque no ícone da Tela de Início. **Não funcionou**: o
+Safari/iOS só libera `SpeechRecognition.start()` dentro de um toque real DENTRO da
+página — abrir o app pelo ícone (fora do contexto JS da página carregada) não conta como
+esse gesto, então `rec.start()` ficava bloqueado silenciosamente e o app nunca escutava de
+verdade até um toque manual na tela. **Solução atual:** mostra uma tela "Toque para
+falar" ao carregar e só chama `ouvirTitulo()` dentro de um listener de `click` no
+`document` (`{ once: true }`) — ou seja, ainda é preciso 1 toque dentro do app depois de
+abri-lo (isso é uma política do navegador, não um bug), mas agora fica claro e imediato em
+vez de parecer travado na tela de "ouvindo" sem fazer nada. O `uid` continua só sendo
+necessário no fim (dentro de `ouvirHora`, antes de salvar), via `await prontoAuth` — uma
+Promise resolvida pelo `onAuthStateChanged` com o uid (ou `null`), que roda em paralelo
+desde a carga da página independente do toque. O fallback de teclado (sem reconhecimento
+de voz) não tem esse problema de gesto, então continua simplesmente esperando o
 `onAuthStateChanged` normalmente antes de começar.
 
 **Versionamento:** este app não segue o padrão de versão obrigatória dos outros sistemas do
